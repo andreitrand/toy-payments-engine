@@ -47,8 +47,8 @@ fn case_insensitive_kind<'de, D: Deserializer<'de>>(
     InputKind::deserialize(kind.into_deserializer())
 }
 
-/// Deserializes an optional amount from its text form, without going through a float. An empty or missing
-/// field yields `None`. A present amount must be positive and have at most [`MAX_AMOUNT_SCALE`] decimal places.
+/// Deserializes an optional amount from its text form. An empty or missing field yields `None`.
+/// A present amount must be positive and have at most [`MAX_AMOUNT_SCALE`] decimal places.
 fn validated_amount<'de, D: Deserializer<'de>>(
     deserializer: D,
 ) -> Result<Option<Decimal>, D::Error> {

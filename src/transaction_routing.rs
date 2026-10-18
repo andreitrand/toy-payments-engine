@@ -2,8 +2,8 @@
 
 use std::sync::mpsc::{SendError, SyncSender};
 
-use crate::EngineError;
 use crate::transaction::Transaction;
+use crate::{EngineError, TransactionRejectionReason};
 
 /// Forwards transactions to the worker responsible for their client.
 ///
@@ -21,7 +21,7 @@ impl TransactionRouter {
         Self { senders }
     }
 
-    /// Sends `transaction` to the worker responsible for its client. Blocks when a worker's channel is full.
+    /// Sends a transaction to the worker responsible for it. Blocks when the channel is full.
     ///
     /// Returns the transaction back if the worker has stopped receiving, for example
     /// because it panicked.
@@ -48,6 +48,9 @@ pub trait TransactionProducer {
 ///
 /// Each engine worker owns one consumer and feeds it the transactions routed to it, in order.
 pub trait TransactionConsumer {
-    /// Processes a single transaction, returning a message if it is invalid in any way.
-    fn process_transaction(&mut self, transaction: Transaction) -> Result<(), String>;
+    /// Processes a single transaction, or returns the reason it was rejected.
+    fn process_transaction(
+        &mut self,
+        transaction: Transaction,
+    ) -> Result<(), TransactionRejectionReason>;
 }
