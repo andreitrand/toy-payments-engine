@@ -35,7 +35,7 @@ impl TransactionStats {
     }
 }
 
-/// Print the statistics, one line per outcome.
+/// Displays the statistics, one line per outcome.
 impl fmt::Display for TransactionStats {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let total_rejected: u64 = self.rejected.values().sum();

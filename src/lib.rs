@@ -8,21 +8,21 @@
 //! 2. A [`TransactionRouter`](transaction_routing::TransactionRouter) forwards each
 //!    transaction to a worker, chosen by client ID, so that all transactions of a
 //!    given client are handled by the same worker, in order.
-//! 3. Each worker owns a [`TransactionConsumer`] (e.g.
-//!    [`TransactionProcessor`](transaction_processor::TransactionProcessor)) that
+//! 3. Each worker owns a [`TransactionConsumer`] (e.g. [`TransactionProcessor`]) that
 //!    applies the transactions to the accounts it is responsible for.
 //!
 //! Workers share no state, so no locking is needed while processing. Their results
 //! are collected once all producers are done; see [`TransactionEngine`].
-//! A [`TransactionProcessor`](transaction_processor::TransactionProcessor)
-//! displays its final account states as CSV rows.
+//! A [`TransactionProcessor`] displays its final account states as CSV rows, and
+//! [`write_accounts`] writes those of every processor under a single header.
 
-use std::io;
+use std::io::{self, Write};
 use std::path::PathBuf;
 use std::sync::mpsc::SendError;
 
 use crate::transaction::Transaction;
 use crate::transaction_engine::{EngineOutput, TransactionEngine};
+use crate::transaction_processor::TransactionProcessor;
 use crate::transaction_routing::{TransactionConsumer, TransactionProducer};
 
 pub mod input_csv;
@@ -38,7 +38,7 @@ pub enum EngineError {
     #[error("Failed to open '{}': {source}", .path.display())]
     Open { path: PathBuf, source: io::Error },
 
-    /// Reading the input failed partway through.
+    /// The input's headers were incorrect or it failed to read part-way.
     #[error("Failed to read input: {0}")]
     Read(io::Error),
 
@@ -78,7 +78,11 @@ pub enum TransactionRejectionReason {
     #[error("Transaction is not under dispute")]
     NotDisputed,
 
-    /// Applying the transaction would overflow an amount.
+    /// A deposit or withdrawal with an amount that is not positive or exceeds the maximum.
+    #[error("Invalid amount")]
+    InvalidAmount,
+
+    /// Applying the transaction would lead to a balance overflow.
     #[error("Arithmetic overflow")]
     Overflow,
 }
@@ -104,4 +108,15 @@ pub fn run_with_single_transaction_producer<
 
     transaction_producer.send_all_transactions(engine.router())?;
     engine.wait_for_completion()
+}
+
+/// Writes the accounts of every processor to `out` as CSV, under a
+/// `client,available,held,total,locked` header. The rows are in no particular order.
+pub fn write_accounts(mut out: impl Write, processors: &[TransactionProcessor]) -> io::Result<()> {
+    writeln!(out, "client,available,held,total,locked")?;
+    for processor in processors {
+        write!(out, "{processor}")?;
+    }
+
+    out.flush()
 }

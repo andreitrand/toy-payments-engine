@@ -1,0 +1,13 @@
+type, client, tx, amount
+deposit, 1, 1, 2.0
+deposit, 1, 2, -1.0
+deposit, 1, 3, 1.23456
+transfer, 1, 4, 1.0
+dispute, 1, 1, 2.0
+deposit, 9, 9, abc
+deposit, 70000, 10, 1.0
+deposit, 1, 11, 1.0, extra
+withdrawal, 1, 5, 5.0
+dispute, 1, 99,
+deposit, 1, 1, 3.0
+withdrawal, 1, 8, 0.5

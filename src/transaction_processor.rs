@@ -6,7 +6,7 @@ use std::fmt;
 use rust_decimal::Decimal;
 
 use crate::TransactionRejectionReason;
-use crate::transaction::{Transaction, TransactionPayload, TxKind};
+use crate::transaction::{MAX_AMOUNT, Transaction, TransactionPayload, TxKind};
 use crate::transaction_routing::TransactionConsumer;
 
 /// Balances and status of a single client account.
@@ -16,7 +16,7 @@ pub struct ClientAccount {
     pub available: Decimal,
     /// Funds held by open disputes.
     pub held: Decimal,
-    /// Whether an account is locked from a chargeback. Affects only deposits and withdrawals.
+    /// Whether an account is locked by a chargeback. Affects only deposits and withdrawals.
     pub locked: bool,
 }
 
@@ -35,6 +35,9 @@ impl ClientState {
     fn deposit(&mut self, tx: u32, amount: Decimal) -> Result<(), TransactionRejectionReason> {
         // Deposits are not allowed on locked accounts.
         self.ensure_unlocked()?;
+
+        // Only positive amounts up to the maximum can be deposited.
+        Self::ensure_valid_amount(amount)?;
 
         // Check for duplicate transaction IDs.
         if self.deposits.contains_key(&tx) {
@@ -66,6 +69,9 @@ impl ClientState {
     fn withdraw(&mut self, amount: Decimal) -> Result<(), TransactionRejectionReason> {
         // Withdrawals are not allowed on locked accounts.
         self.ensure_unlocked()?;
+
+        // Only positive amounts up to the maximum can be withdrawn.
+        Self::ensure_valid_amount(amount)?;
 
         // Withdrawals larger than the current available balance are rejected.
         if self.account.available < amount {
@@ -162,7 +168,7 @@ impl ClientState {
         Ok(())
     }
 
-    /// Check if an account is locked, returning an error if so.
+    /// Checks if an account is locked, returning an error if so.
     fn ensure_unlocked(&self) -> Result<(), TransactionRejectionReason> {
         if self.account.locked {
             Err(TransactionRejectionReason::AccountLocked)
@@ -171,7 +177,7 @@ impl ClientState {
         }
     }
 
-    /// Get the amount that was deposited in a given transaction.
+    /// Gets the amount that was deposited in a given transaction.
     fn get_deposit_amount(&self, tx: u32) -> Result<Decimal, TransactionRejectionReason> {
         self.deposits
             .get(&tx)
@@ -179,12 +185,21 @@ impl ClientState {
             .ok_or(TransactionRejectionReason::UnknownTransaction)
     }
 
-    /// Get the amount that is disputed by a given transaction.
+    /// Gets the amount that is disputed by a given transaction.
     fn get_disputed_amount(&self, tx: u32) -> Result<Decimal, TransactionRejectionReason> {
         if !self.disputed.contains(&tx) {
             return Err(TransactionRejectionReason::NotDisputed);
         }
         self.get_deposit_amount(tx)
+    }
+
+    /// Rejects an amount that is not positive or exceeds [`MAX_AMOUNT`].
+    fn ensure_valid_amount(amount: Decimal) -> Result<(), TransactionRejectionReason> {
+        if amount > Decimal::ZERO && amount <= Decimal::from(MAX_AMOUNT) {
+            Ok(())
+        } else {
+            Err(TransactionRejectionReason::InvalidAmount)
+        }
     }
 }
 
@@ -205,7 +220,7 @@ pub struct TransactionProcessor {
 impl fmt::Display for TransactionProcessor {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         for (client, account) in self.get_accounts() {
-            // Calculate the total balance, which cannot overflow because of previous checks.
+            // Calculate the total balance, which cannot overflow due to capped input amounts.
             let account_total = account.available + account.held;
 
             writeln!(
@@ -230,7 +245,7 @@ impl TransactionConsumer for TransactionProcessor {
             payload: TransactionPayload { tx, kind },
         } = transaction;
 
-        // Returns the client's state, creating an empty account for a new client.
+        // Gets the client's state, creating an empty account for a new client.
         let client_state = self.client_states.entry(client).or_default();
 
         match kind {
